@@ -63,6 +63,14 @@ public class kuroinuslot implements CommandExecutor, TabCompleter {
                         try {
                             newSlot.createNewFile();
                             newSlotYml.set("name", args[1]);
+                            newSlotYml.set("tick", 40);
+                            newSlotYml.set("delay", 1);
+                            newSlotYml.set("symbol.1.item", "DIAMOND");
+                            newSlotYml.set("symbol.1.name", "§e§lダイヤモンド");
+                            newSlotYml.set("symbol.1.glow", true);
+                            newSlotYml.set("symbol.2.item", "GOLD_INGOT");
+                            newSlotYml.set("symbol.2.name", "§e§l金インゴット");
+                            newSlotYml.set("symbol.2.glow", false);
                             newSlotYml.set("coin.type", "money");
                             newSlotYml.set("coin.amount", 100);
                             newSlotYml.set("coin.item", null);
