@@ -1,1 +1,2 @@
 # KuroinuSLotPlugin_Test
+`てすと`
