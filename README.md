@@ -3,21 +3,21 @@
 ### <>は必須項目、()はオプション項目です
 /kslot
 - create
-- - help
+  - help
   - <スロット名>
 - place
-- - <スロット名>
-  - - <スロットID>
+  - <スロット名>
+    - <スロットID>
 - edit
-- - <スロット名>
-  - - coin
+  - <スロット名>
+    - coin
     - reward
     - symbol
-    - - <シンボルID>
-      - - handitem
+      - <シンボルID>
+        - handitem
 - debug
-- - isPlaying
-  - - true
-    - - (プレイヤー名)
+  - isPlaying
+    - true
+      - (プレイヤー名)
     - false
-    - - (プレイヤー名)
+      - (プレイヤー名)
