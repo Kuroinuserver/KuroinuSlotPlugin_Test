@@ -1,2 +1,4 @@
 # KuroinuSLotPlugin_Test
-`てすと`
+## コマンド
+/kslot
+- create
