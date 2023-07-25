@@ -21,3 +21,21 @@
       - (プレイヤー名)
     - false
       - (プレイヤー名)
+## .ymlファイル
+### config.yml
+### slots/<スロット名>.yml
+name:
+tick:
+delay:
+coin:
+- money:
+- item:
+slot:
+- <アイテムナンバー>
+  - reward:
+    - <リワードナンバー>
+      - item
+  - percent:
+symbol:
+- <シンボルナンバー>
+  - item
