@@ -7,6 +7,8 @@ import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Sound;
+import org.bukkit.block.Block;
+import org.bukkit.block.Sign;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Entity;
@@ -28,9 +30,11 @@ import org.bukkit.plugin.Plugin;
 import org.bukkit.scheduler.BukkitRunnable;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.*;
 
 import static com.kuroinusaba.kuroinuslotplugin_test.KuroinuSlotPlugin_Test.*;
+import static java.lang.Math.round;
 
 public class Listeners implements Listener {
     @EventHandler
@@ -66,7 +70,6 @@ public class Listeners implements Listener {
     @EventHandler
     public void onPlayerBlockPlace(BlockPlaceEvent e) {
         Player player = e.getPlayer();
-        plugin.getLogger().info(e.getBlock().getType().toString());
         File data = new File("plugins/KuroinuSlotPlugin_Test/data/" + player.getUniqueId() + ".yml");
         YamlConfiguration dataconfig = YamlConfiguration.loadConfiguration(data);
         if (!data.exists()) {
@@ -103,6 +106,13 @@ public class Listeners implements Listener {
                 File placedslot = new File("plugins/KuroinuSlotPlugin_Test/placedslot/" + dataconfig.getString("slotname") + ".yml");
                 YamlConfiguration placedslotconfig = YamlConfiguration.loadConfiguration(placedslot);
                 placedslotconfig.set("sign", e.getBlock().getLocation());
+                placedslotconfig.set("stock", dataconfig.getInt("defaultstock"));
+                placedslotconfig.set("freespin", 0);
+                Sign sign = (Sign) e.getBlock().getState();
+                sign.setLine(0, "§a§l====================");
+                sign.setLine(1, "§a§l[" + dataconfig.getString("displayname") + "§a§l]");
+                sign.setLine(2, "§a§lストック: " + dataconfig.getInt("defaultstock"));
+                sign.setLine(3, "§a§l====================");
                 try {
                     placedslotconfig.save(placedslot);
                 } catch (Exception ex) {
@@ -171,6 +181,8 @@ public class Listeners implements Listener {
         Player player = e.getPlayer();
         if (e.getAction() == Action.RIGHT_CLICK_BLOCK) {
             if (e.getClickedBlock().getType().toString().equals("LEVER")) {
+                File playerdata = new File("plugins/KuroinuSlotPlugin_Test/data/" + player.getUniqueId() + ".yml");
+                YamlConfiguration playerdataconfig = YamlConfiguration.loadConfiguration(playerdata);
                 File slot = new File("plugins/KuroinuSlotPlugin_Test/placedslot");
                 for (File file : slot.listFiles()) {
                     YamlConfiguration slotconfig = YamlConfiguration.loadConfiguration(file);
@@ -229,17 +241,45 @@ public class Listeners implements Listener {
                                 player.sendMessage(prefix + "§c§lお金が足りません。");
                                 return;
                             }
-                            EconomyResponse withdraw = econ.withdrawPlayer(player, slotdataconfig.getInt("coin.amount"));
-                            if (withdraw.transactionSuccess()) {
-                                player.sendMessage(prefix + "§e§l" + withdraw.amount + "§r§e円支払いました。");
-                                // スロットの処理
+                            if (playerdataconfig.getBoolean("isPlaying")) {
+                                return;
+                            }
+                            if (slotconfig.getInt("freespin") == 0) {
+                                EconomyResponse withdraw = econ.withdrawPlayer(player, slotdataconfig.getInt("coin.amount"));
+                                if (withdraw.transactionSuccess()) {
+                                    player.sendMessage(prefix + "§e§l" + withdraw.amount + "§r§e円支払いました。");
+                                    playerdataconfig.set("isPlaying", true);
+                                    try {
+                                        playerdataconfig.save(playerdata);
+                                    } catch (Exception ex) {
+                                        throw new RuntimeException(ex);
+                                    }
+                                    YamlConfiguration slotdata2 = YamlConfiguration.loadConfiguration(slotdata);
+                                    File slotconfig2 = new File("plugins/KuroinuSlotPlugin_Test/placedslot/" + slotconfig.getString("slotname") + ".yml");
+                                    YamlConfiguration slotconfig3 = YamlConfiguration.loadConfiguration(slotconfig2);
+                                    roll(player, slotdata2, slotconfig, file);
+                                } else {
+                                    player.sendMessage(prefix + "§c§lお金を支払えませんでした。");
+                                    return;
+                                }
+                            } else{
+                                slotconfig.set("freespin", slotconfig.getInt("freespin") - 1);
+                                try {
+                                    slotconfig.save(file);
+                                } catch (Exception ex) {
+                                    throw new RuntimeException(ex);
+                                }
+                                player.sendMessage(prefix + "§e§l無料でスロットを回します。");
+                                playerdataconfig.set("isPlaying", true);
+                                try {
+                                    playerdataconfig.save(playerdata);
+                                } catch (Exception ex) {
+                                    throw new RuntimeException(ex);
+                                }
                                 YamlConfiguration slotdata2 = YamlConfiguration.loadConfiguration(slotdata);
                                 File slotconfig2 = new File("plugins/KuroinuSlotPlugin_Test/placedslot/" + slotconfig.getString("slotname") + ".yml");
                                 YamlConfiguration slotconfig3 = YamlConfiguration.loadConfiguration(slotconfig2);
-                                roll(player, slotdata2, slotconfig3);
-                            } else {
-                                player.sendMessage(prefix + "§c§lお金を支払えませんでした。");
-                                return;
+                                roll(player, slotdata2, slotconfig, file);
                             }
                         } else if (slotdataconfig.get("coin.type").equals("item")) {
                             ItemStack item = new ItemStack(Material.getMaterial(slotdataconfig.getString("coin.item")));
@@ -261,7 +301,8 @@ public class Listeners implements Listener {
         }
     }
 
-    public void roll(Player player, YamlConfiguration slotdata, YamlConfiguration placedslotconfig) {
+    public void roll(Player player, YamlConfiguration slotdata, YamlConfiguration placedslotconfig, File placedslotdata) {
+        File playerdata = new File("plugins/KuroinuSlotPlugin_Test/playerdata/" + player.getUniqueId() + ".yml");
         int symbolnum = slotdata.getConfigurationSection("symbol").getKeys(false).size();
         for (int i = 1; i <= symbolnum; i++) {
         }
@@ -270,70 +311,294 @@ public class Listeners implements Listener {
         Location loc1 = placedslotconfig.getLocation("itemframe1");
         Location loc2 = placedslotconfig.getLocation("itemframe2");
         Location loc3 = placedslotconfig.getLocation("itemframe3");
+        int percentage = round(100 / slotdata.getInt("percentage"));
+        int random = new Random().nextInt(percentage) + 1;
         for (int i = 1; i <= tick; i++) {
             int finalI = i;
             int finalDelay = delay;
+            int finalI1 = i;
             Bukkit.getScheduler().runTaskLater(plugin, new Runnable() {
                 @Override
                 public void run() {
                     int frameroll1 = new Random().nextInt(symbolnum) + 1;
                     int frameroll2 = new Random().nextInt(symbolnum) + 1;
                     int frameroll3 = new Random().nextInt(symbolnum) + 1;
+                    int finalFrameroll1 = 0;
+                    int finalFrameroll2 = 0;
+                    int finalFrameroll3 = 0;
+                    if (random == 1) {
+                        int bunnsuu = 1;
+                        for (int i = 1; i <= symbolnum; i++) {
+                            bunnsuu = bunnsuu + (100 / slotdata.getInt("slot." + i + ".percentage"));
+                        }
+                        // bunnsuuを四捨五入する
+                        bunnsuu = round(bunnsuu);
+                        int random2 = new Random().nextInt(bunnsuu) + 1;
+                        int kari = 0;
+                        for (int i = 1; i <= symbolnum; i++) {
+                            if (kari < random2 && random2 <= kari + (100 / slotdata.getInt("slot." + i + ".percentage"))) {
+                                List<Integer> list = slotdata.getIntegerList("slot." + i + ".pattern");
+                                finalFrameroll1 = list.get(0);
+                                finalFrameroll2 = list.get(1);
+                                finalFrameroll3 = list.get(2);
+                                kari = kari + (100 / slotdata.getInt("slot." + i + ".percentage"));
+                            } else {
+                                random2 = random2 - round(100 / slotdata.getInt("slot." + i + ".percentage"));
+                            }
+                        }
+                    } else {
+                        frameroll3 = frameroll2 - 1;
+                        if (frameroll3 == 0) {
+                            frameroll3 = frameroll3 + 2;
+                        }
+                    }
                     if (loc1.getNearbyEntities(0.5, 0.5, 0.5).size() == 0) {
                         if (player.hasPermission("admin")) {
                             player.sendMessage(prefix + "§c§l1§r§c番目のアイテムフレームが見つかりませんでした。");
                         }
-                        
+
                     } else {
                         List<Entity> entities = (List<Entity>) loc1.getNearbyEntities(0.5, 0.5, 0.5);
                         for (Entity entity : entities) {
                             if (entity instanceof ItemFrame) {
                                 ItemFrame itemframe = (ItemFrame) entity;
-                                itemframe.setItem(new ItemStack(Material.getMaterial(slotdata.getString("symbol." + frameroll1 + ".item"))));
-                                if (slotdata.getBoolean("symbol." + frameroll1 + ".glow")) {
-                                    ItemStack flame1 = new ItemStack(Material.getMaterial(slotdata.getString("symbol." + frameroll1 + ".item")));
-                                    flame1.getItemMeta().setDisplayName(slotdata.getString("symbol." + frameroll1 + ".name"));
-                                    ItemMeta meta1 = flame1.getItemMeta();
-                                    if (slotdata.getBoolean("symbol." + frameroll1 + ".glow")) {
-                                        meta1.addEnchant(Enchantment.DURABILITY, 1, true);
-                                        meta1.addItemFlags(ItemFlag.HIDE_ENCHANTS);
-                                    }
-                                    itemframe.setItem(flame1);
-                                }
+                                ItemStack item1 = slotdata.getItemStack("symbol." + frameroll1);
+                                itemframe.setItem(item1);
                             }
                         }
                         List<Entity> entities2 = (List<Entity>) loc2.getNearbyEntities(0.5, 0.5, 0.5);
                         for (Entity entity : entities2) {
                             if (entity instanceof ItemFrame) {
                                 ItemFrame itemframe = (ItemFrame) entity;
-                                itemframe.setItem(new ItemStack(Material.getMaterial(slotdata.getString("symbol." + frameroll2 + ".item"))));
-                                if (slotdata.getBoolean("symbol." + frameroll2 + ".glow")) {
-                                    ItemStack flame2 = new ItemStack(Material.getMaterial(slotdata.getString("symbol." + frameroll2 + ".item")));
-                                    flame2.getItemMeta().setDisplayName(slotdata.getString("symbol." + frameroll2 + ".name"));
-                                    ItemMeta meta2 = flame2.getItemMeta();
-                                    if (slotdata.getBoolean("symbol." + frameroll2 + ".glow")) {
-                                        meta2.addEnchant(Enchantment.DURABILITY, 1, true);
-                                        meta2.addItemFlags(ItemFlag.HIDE_ENCHANTS);
-                                    }
-                                    itemframe.setItem(flame2);
-                                }
+                                ItemStack item2 = slotdata.getItemStack("symbol." + frameroll2);
+                                itemframe.setItem(item2);
                             }
                         }
                         List<Entity> entities3 = (List<Entity>) loc3.getNearbyEntities(0.5, 0.5, 0.5);
                         for (Entity entity : entities3) {
                             if (entity instanceof ItemFrame) {
                                 ItemFrame itemframe = (ItemFrame) entity;
-                                itemframe.setItem(new ItemStack(Material.getMaterial(slotdata.getString("symbol." + frameroll3 + ".item"))));
-                                if (slotdata.getBoolean("symbol." + frameroll3 + ".glow")) {
-                                    ItemStack flame3 = new ItemStack(Material.getMaterial(slotdata.getString("symbol." + frameroll3 + ".item")));
-                                    flame3.getItemMeta().setDisplayName(slotdata.getString("symbol." + frameroll3 + ".name"));
-                                    ItemMeta meta3 = flame3.getItemMeta();
-                                    if (slotdata.getBoolean("symbol." + frameroll3 + ".glow")) {
-                                        meta3.addEnchant(Enchantment.DURABILITY, 1, true);
-                                        meta3.addItemFlags(ItemFlag.HIDE_ENCHANTS);
+                                ItemStack item3 = slotdata.getItemStack("symbol." + frameroll3);
+                                itemframe.setItem(item3);
+                            }
+                        }
+                        Sound sound = Sound.valueOf(slotdata.getString("rollsound"));
+                        // ワールドに音を鳴らす
+                        loc1.getWorld().playSound(loc1, sound, 1, 1);
+                        if (finalI1 == tick) {
+                            // finalFrameroll1がnullの場合
+                            if (finalFrameroll1 != 0) {
+                                entities = (List<Entity>) loc1.getNearbyEntities(0.5, 0.5, 0.5);
+                                for (Entity entity : entities) {
+                                    if (entity instanceof ItemFrame) {
+                                        ItemFrame itemframe = (ItemFrame) entity;
+                                        ItemStack item1 = slotdata.getItemStack("symbol." + finalFrameroll1);
+                                        itemframe.setItem(item1);
                                     }
-                                    itemframe.setItem(flame3);
                                 }
+                                entities2 = (List<Entity>) loc2.getNearbyEntities(0.5, 0.5, 0.5);
+                                for (Entity entity : entities2) {
+                                    if (entity instanceof ItemFrame) {
+                                        ItemFrame itemframe = (ItemFrame) entity;
+                                        ItemStack item2 = slotdata.getItemStack("symbol." + finalFrameroll2);
+                                        itemframe.setItem(item2);
+                                    }
+                                }
+                                entities3 = (List<Entity>) loc3.getNearbyEntities(0.5, 0.5, 0.5);
+                                for (Entity entity : entities3) {
+                                    if (entity instanceof ItemFrame) {
+                                        ItemFrame itemframe = (ItemFrame) entity;
+                                        ItemStack item3 = slotdata.getItemStack("symbol." + finalFrameroll3);
+                                        itemframe.setItem(item3);
+                                    }
+                                }
+                                List<String> actions = slotdata.getStringList("slot." + finalFrameroll1 + ".action");
+                                int rewardmoney = slotdata.getInt("slot." + finalFrameroll1 + ".rewardmoney");
+                                for (String action : actions) {
+                                    // sound:から始まる場合、そのサウンドを再生する
+                                    if (action.contains("sound:")) {
+                                        String soundname = action.replace("sound:", "");
+                                        Sound sound2 = Sound.valueOf(soundname);
+                                        player.playSound(player.getLocation(), sound2, 1, 1);
+                                    }
+                                    // stock:から始まる場合
+                                    if (action.contains("stock:")) {
+                                        String stock = action.replace("stock:", "");
+                                        if (stock.contains("add")) {
+                                            stock = stock.replace("add", "");
+                                            int stocknum = Integer.parseInt(stock);
+                                            int stocknum2 = placedslotconfig.getInt("stock");
+                                            int stocknum3 = stocknum2 + stocknum;
+                                            placedslotconfig.set("stock", stocknum3);
+                                            try {
+                                                placedslotconfig.save(placedslotdata);
+                                            } catch (IOException e) {
+                                                e.printStackTrace();
+                                            }
+                                        }
+                                        if (stock.contains("remove")) {
+                                            stock = stock.replace("remove", "");
+                                            int stocknum = Integer.parseInt(stock);
+                                            int stocknum2 = placedslotconfig.getInt("stock");
+                                            int stocknum3 = stocknum2 - stocknum;
+                                            placedslotconfig.set("stock", stocknum3);
+                                            try {
+                                                placedslotconfig.save(placedslotdata);
+                                            } catch (IOException e) {
+                                                e.printStackTrace();
+                                            }
+                                        }
+                                        if (stock.contains("set")) {
+                                            stock = stock.replace("set", "");
+                                            int stocknum = Integer.parseInt(stock);
+                                            placedslotconfig.set("stock", stocknum);
+                                            try {
+                                                placedslotconfig.save(placedslotdata);
+                                            } catch (IOException e) {
+                                                e.printStackTrace();
+                                            }
+                                        }
+                                        if (stock.contains("reset")) {
+                                            placedslotconfig.set("stock", 0);
+                                            try {
+                                                placedslotconfig.save(placedslotdata);
+                                            } catch (IOException e) {
+                                                e.printStackTrace();
+                                            }
+                                        }
+                                        if (stock.contains("payout")) {
+                                            int stocknum = placedslotconfig.getInt("stock");
+                                            int newstocknum = slotdata.getInt("defaultstock");
+                                            placedslotconfig.set("stock", newstocknum);
+                                            rewardmoney = rewardmoney + stocknum;
+                                            try {
+                                                placedslotconfig.save(placedslotdata);
+                                            } catch (IOException e) {
+                                                e.printStackTrace();
+                                            }
+                                        }
+                                    }
+                                    // b:から始まる場合、そのメッセージを全員に送信する
+                                    if (action.contains("b:")) {
+                                        String message = action.replace("b:", "");
+                                        message = message.replace("&", "§");
+                                        message = message.replace("%player%", player.getName());
+                                        message = message.replace("%rewardmoney%", rewardmoney + "");
+                                        Bukkit.broadcastMessage(prefix + message);
+                                    }
+                                    // c:から始まる場合、そのコマンドを実行する
+                                    if (action.contains("c:")) {
+                                        String command = action.replace("c:", "");
+                                        command = command.replace("%player%", player.getName());
+                                        command = command.replace("%rewardmoney%", rewardmoney + "");
+                                        Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command);
+                                    }
+                                    // s:から始まる場合、プレイヤーにメッセージを送信する
+                                    if (action.contains("s:")) {
+                                        String message = action.replace("s:", "");
+                                        message = message.replace("&", "§");
+                                        message = message.replace("%player%", player.getName());
+                                        message = message.replace("%rewardmoney%", rewardmoney + "");
+                                        player.sendMessage(prefix + message);
+                                    }
+                                    // slot:から始まる場合、そのスロットに切り替える
+                                    if (action.contains("slot:")) {
+                                        String slotname = action.replace("slot:", "");
+                                        File slot = new File("plugins/KuroinuSlotPlugin_Test/slots/" + slotname + ".yml");
+                                        YamlConfiguration slotdata2 = YamlConfiguration.loadConfiguration(slot);
+                                        if (slot.exists()) {
+                                            placedslotconfig.set("slotname", slotname);
+                                            try {
+                                                placedslotconfig.save(placedslotdata);
+                                                player.sendMessage(prefix + "§a§l" + slotname + "§f§lスロットに切り替えました。");
+                                            } catch (IOException e) {
+                                                e.printStackTrace();
+                                            }
+                                        } else {
+                                            player.sendMessage(prefix + "§c§l" + slotname + "§f§lスロットは存在しません。");
+                                        }
+                                    }
+                                    // freespin:から始まる場合
+                                    if (action.contains("freespin:")) {
+                                        String freespin = action.replace("freespin:", "");
+                                        if (freespin.contains("add")) {
+                                            freespin = freespin.replace("add", "");
+                                            int freespinnum = Integer.parseInt(freespin);
+                                            int freespinnum2 = placedslotconfig.getInt("freespin");
+                                            int freespinnum3 = freespinnum2 + freespinnum;
+                                            placedslotconfig.set("freespin", freespinnum3);
+                                            try {
+                                                placedslotconfig.save(placedslotdata);
+                                            } catch (IOException e) {
+                                                e.printStackTrace();
+                                            }
+                                        }
+                                        if (freespin.contains("remove")) {
+                                            freespin = freespin.replace("remove", "");
+                                            int freespinnum = Integer.parseInt(freespin);
+                                            int freespinnum2 = placedslotconfig.getInt("freespin");
+                                            int freespinnum3 = freespinnum2 - freespinnum;
+                                            placedslotconfig.set("freespin", freespinnum3);
+                                            try {
+                                                placedslotconfig.save(placedslotdata);
+                                            } catch (IOException e) {
+                                                e.printStackTrace();
+                                            }
+                                        }
+                                        if (freespin.contains("set")) {
+                                            freespin = freespin.replace("set", "");
+                                            int freespinnum = Integer.parseInt(freespin);
+                                            placedslotconfig.set("freespin", freespinnum);
+                                            try {
+                                                placedslotconfig.save(placedslotdata);
+                                            } catch (IOException e) {
+                                                e.printStackTrace();
+                                            }
+                                        }
+                                        if (freespin.contains("reset")) {
+                                            placedslotconfig.set("freespin", 0);
+                                            try {
+                                                placedslotconfig.save(placedslotdata);
+                                            } catch (IOException e) {
+                                                e.printStackTrace();
+                                            }
+                                        }
+                                    }
+                                }
+                                // プレイヤーにお金を渡す
+                                EconomyResponse r = econ.depositPlayer(player, rewardmoney);
+                                if (r.transactionSuccess()) {
+                                    player.sendMessage(String.format("§a§l%s円を獲得しました。", econ.format(r.amount)));
+                                } else {
+                                    player.sendMessage(String.format("§c§lお金を獲得できませんでした。獲得できなかったお金:%s円", econ.format(r.amount)));
+                                }
+                            } else {
+                                player.sendMessage(prefix + "§c§l外れました。");
+                                int stocknum = slotdata.getInt("stockgain");
+                                int stocknum2 = placedslotconfig.getInt("stock");
+                                int stocknum3 = stocknum2 + stocknum;
+                                placedslotconfig.set("stock", stocknum3);
+                                try {
+                                    placedslotconfig.save(placedslotdata);
+                                } catch (IOException e) {
+                                    e.printStackTrace();
+                                }
+                            }
+                            Location signloc = placedslotconfig.getLocation("sign");
+                            Block signblock = signloc.getBlock();
+                            Sign sign = (Sign) signblock.getState();
+                            sign.setLine(0, "§a§l====================");
+                            sign.setLine(1, "§a§l[" + slotdata.getString("displayname") + "§a§l]");
+                            sign.setLine(2, "§a§lストック:" + placedslotconfig.getInt("stock"));
+                            sign.setLine(3, "§a§l====================");
+                            sign.update();
+                            File data = new File("plugins/KuroinuSlotPlugin_Test/data/" + player.getUniqueId() + ".yml");
+                            YamlConfiguration dataYml = YamlConfiguration.loadConfiguration(data);
+                            dataYml.set("isPlaying", false);
+                            try {
+                                dataYml.save(data);
+                            } catch (IOException e) {
+                                e.printStackTrace();
                             }
                         }
                     }
