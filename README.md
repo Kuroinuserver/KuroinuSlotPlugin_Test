@@ -25,6 +25,7 @@
 ### config.yml
 ### slots/<スロット名>.yml
 name:
+displayname:
 tick:
 delay:
 coin:
@@ -39,3 +40,13 @@ slot:
 symbol:
 - <シンボルナンバー>
   - item
+startsound:
+ticksound:
+### placedslot/<スロットID>.yml
+slot:
+itemframe1:
+itemframe2:
+itemframe3:
+lever:
+sign:
+stock:
